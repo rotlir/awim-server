@@ -21,6 +21,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -28,6 +29,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
@@ -56,12 +58,13 @@ class MainActivity : ComponentActivity() {
     private var connectedToWiFi by mutableStateOf(false)
     private var ip: ByteArray? by mutableStateOf(null)
     private var networkCallbackRegistered by mutableStateOf(false)
-    private var udpRunning by mutableStateOf(false)
+    private var serviceRunning by mutableStateOf(false)
     private var autoAssignPort by mutableStateOf(true)
     private var port by mutableIntStateOf(0)
     private var bindError by mutableStateOf(false)
-    private var service: UDPService? by mutableStateOf(null)
-    private var binder: UDPService.LocalBinder? by mutableStateOf(null)
+    private var service: ConnectionService? by mutableStateOf(null)
+    private var binder: ConnectionService.LocalBinder? by mutableStateOf(null)
+    private var tcpMode by mutableStateOf(false)
 
     private val serviceCallback = object : ServiceCallback {
         override fun onPortChanged(p: Int) {
@@ -76,16 +79,17 @@ class MainActivity : ComponentActivity() {
             permissionsChecked = permOk
         }
 
-        override fun onUdpRunningChanged(isUdpRunning: Boolean) {
-            udpRunning = isUdpRunning
+        override fun onRunningChanged(isRunning: Boolean) {
+            serviceRunning = isRunning
         }
 
     }
 
     private val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(p0: ComponentName?, p1: IBinder?) {
-            binder = p1 as UDPService.LocalBinder
+            binder = p1 as ConnectionService.LocalBinder
             service = binder!!.getService()
+            tcpMode = binder!!.isTCPMode()
             binder!!.registerCallback(serviceCallback)
         }
 
@@ -105,7 +109,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        val bindIntent = Intent(this, UDPService::class.java)
+        val bindIntent = Intent(this, ConnectionService::class.java)
         bindService(bindIntent, serviceConnection, Context.BIND_AUTO_CREATE)
         setContent {
             AppTheme {
@@ -207,7 +211,7 @@ class MainActivity : ComponentActivity() {
     private fun destroyService(context: Context) {
         if (service != null) {
             Log.d("MainActivity", "stopping service from main activity")
-            val stopIntent = Intent(context, UDPService::class.java)
+            val stopIntent = Intent(context, ConnectionService::class.java)
             stopService(stopIntent)
             unbindService(serviceConnection)
             binder = null
@@ -222,6 +226,7 @@ class MainActivity : ComponentActivity() {
         var btnText by remember { mutableStateOf("Start AWiM") }
         var enableTextField by remember { mutableStateOf(true) }
         var enableButton by remember { mutableStateOf(true) }
+        var enableSwitch by remember { mutableStateOf(true) }
 
         enableButton = connectedToWiFi
 
@@ -229,6 +234,7 @@ class MainActivity : ComponentActivity() {
             if (connectedToWiFi && bindError) {
                 enableButton = true
                 enableTextField = true
+                enableSwitch = true
                 btnText = "Start AWiM"
                 statusText = "Failed binding socket to specified port.\n You can leave the text field empty to assign port automatically."
             }
@@ -239,25 +245,29 @@ class MainActivity : ComponentActivity() {
                 destroyService(context)
                 enableButton = false
                 enableTextField = false
+                enableSwitch = false
                 btnText = "Start AWiM"
                 statusText = "You should connect to WiFi before starting AWiM."
             } else {
                 enableButton = true
                 enableTextField = true
+                enableSwitch = true
                 statusText = ""
             }
         }
 
-        LaunchedEffect(udpRunning, port) {
-            if (udpRunning) {
+        LaunchedEffect(serviceRunning, port) {
+            if (serviceRunning) {
                 statusText = "AWiM running on ${ip?.toIPString() ?: "null"}:${port}"
                 enableTextField = false
+                enableSwitch = false
                 btnText = "Stop AWiM"
                 portStr = port.toString()
             } else {
                 if (!bindError && connectedToWiFi) {
                     statusText = ""
                     enableButton = true
+                    enableSwitch = true
                     enableTextField = true
                     btnText = "Start AWiM"
                 }
@@ -269,6 +279,17 @@ class MainActivity : ComponentActivity() {
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
+            Row(verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center) {
+                Switch(modifier = Modifier.padding(horizontal = 8.dp, vertical = 16.dp),
+                    checked = tcpMode,
+                    enabled = enableSwitch,
+                    onCheckedChange = {
+                        tcpMode = !tcpMode
+                })
+                Text("TCP mode")
+            }
+
             TextField(
                 value = portStr,
                 label = {Text("Port")},
@@ -299,17 +320,18 @@ class MainActivity : ComponentActivity() {
                         statusText = "Error launching AWiM. Make sure you're connected to a WiFi network"
                         destroyService(context)
                     }
-                    if (udpRunning) destroyService(context)
+                    if (serviceRunning) destroyService(context)
                     else {
                         Log.d("applayout", "starting service")
-                        val startIntent = Intent(context, UDPService::class.java)
+                        val startIntent = Intent(context, ConnectionService::class.java)
                         startIntent.putExtra("port", port)
+                        startIntent.putExtra("tcpMode", tcpMode)
                         startForegroundService(startIntent)
                         bindService(startIntent, serviceConnection, Context.BIND_AUTO_CREATE)
                     }
                 }) {
                 Text(btnText)
-                Log.d("AppLayout()", "udpRunning: $udpRunning")
+                Log.d("AppLayout()", "serviceRunning: $serviceRunning")
 
             }
             Text(textAlign = TextAlign.Center, text = statusText)

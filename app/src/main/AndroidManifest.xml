@@ -22,10 +22,10 @@
         android:theme="@style/Theme.AWiM"
         tools:targetApi="31">
         <service
-            android:name=".UDPService"
+            android:name=".ConnectionService"
             android:enabled="true"
-            android:foregroundServiceType="microphone"
-            android:exported="false" />
+            android:exported="false"
+            android:foregroundServiceType="microphone" />
 
         <activity
             android:name=".MainActivity"
