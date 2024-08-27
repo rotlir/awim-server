@@ -30,7 +30,7 @@ jobs:
           unzip commandlinetools-linux-*.zip -d ./android-sdk &&\
           export ANDROID_HOME=./android-sdk &&\
           export PATH=$PATH:$ANDROID_HOME/cmdline-tools/bin:$ANDROID_HOME/platform-tools &&\
-          yes | sdkmanager --sdk_root=$ANDROID_HOME "platform-tools" "platforms;android-33" "build-tools;33.0.0" &&\
+          yes | ./android-sdk/cmdline-tools/bin/sdkmanager --sdk_root=$ANDROID_HOME "platform-tools" "platforms;android-33" "build-tools;33.0.0" &&\
           ./gradlew clean assembleRelease &&\
           ./android-sdk/build-tools/33.0.0/zipalign -v 4 app/build/outputs/apk/release/app-release-unsigned.apk app-release-aligned.apk &&\
           ./android-sdk/build-tools/33.0.0/apksigner sign --ks release-key.keystore --ks-pass pass:${{ secrets.KEY_PASSWORD }} --out awim-${{ env.SHORT_SHA }}.apk app-release-aligned.apk &&\
