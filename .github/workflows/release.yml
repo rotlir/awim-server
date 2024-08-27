@@ -26,11 +26,13 @@ jobs:
           pacman -Syu --noconfirm && \
           pacman -S wget unzip jdk17-openjdk android-tools android-udev --noconfirm &&\
           archlinux-java set java-17-openjdk &&\
+          export JAVA_HOME=/usr/lib/jvm/java-17-openjdk &&\
+          export PATH=\$PATH:\$JAVA_HOME/bin &&\
           wget https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip &&\
           unzip commandlinetools-linux-*.zip -d ./android-sdk &&\
           export ANDROID_HOME=./android-sdk &&\
-          export PATH=$PATH:$ANDROID_HOME/cmdline-tools/bin:$ANDROID_HOME/platform-tools &&\
-          yes | ./android-sdk/cmdline-tools/bin/sdkmanager --sdk_root=$ANDROID_HOME "platform-tools" "platforms;android-33" "build-tools;33.0.0" &&\
+          export PATH=\$PATH:\$ANDROID_HOME/cmdline-tools/bin:\$ANDROID_HOME/platform-tools &&\
+          yes | ./android-sdk/cmdline-tools/bin/sdkmanager --sdk_root=\$ANDROID_HOME \"platform-tools\" \"platforms;android-33\" \"build-tools;33.0.0\" &&\
           ./gradlew clean assembleRelease &&\
           ./android-sdk/build-tools/33.0.0/zipalign -v 4 app/build/outputs/apk/release/app-release-unsigned.apk app-release-aligned.apk &&\
           ./android-sdk/build-tools/33.0.0/apksigner sign --ks release-key.keystore --ks-pass pass:${{ secrets.KEY_PASSWORD }} --out awim-${{ env.SHORT_SHA }}.apk app-release-aligned.apk &&\
