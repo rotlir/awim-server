@@ -1,0 +1,59 @@
+name: Build and Release
+
+on:
+  push:
+    branches:
+      - new-br
+
+jobs:
+  build:
+    name: Build and Upload to Pre-release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Get short commit SHA
+        id: vars
+        run: echo "SHORT_SHA=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
+
+      - name: Build with Arch Linux
+        run: |
+          docker run --name arch_build -v ${{ github.workspace }}:/workspace -w /workspace archlinux:latest /bin/bash -c "
+          pacman-key --init && \
+          pacman-key --populate archlinux && \
+          pacman -Syu --noconfirm && \
+          pacman -S wget unzip android-sdk jdk17-openjdk &&\
+          archlinux-java set java-17-openjdk &&\
+          wget https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip &&\
+          unzip commandlinetools-linux-*.zip -d ./android-sdk &&\
+          export ANDROID_HOME=./android-sdk &&\
+          export PATH=$PATH:$ANDROID_HOME/cmdline-tools/bin:$ANDROID_HOME/platform-tools &&\
+          yes | sdkmanager --sdk_root=$ANDROID_HOME "platform-tools" "platforms;android-33" "build-tools;33.0.0" &&\
+          ./gradlew clean assembleRelease &&\
+          ./android-sdk/build-tools/33.0.0/zipalign -v 4 app/build/outputs/apk/release/app-release-unsigned.apk app-release-aligned.apk &&\
+          ./android-sdk/build-tools/33.0.0/apksigner sign --ks release-key.keystore --ks-pass pass:${{ secrets.KEY_PASSWORD }} --out awim-${{ env.SHORT_SHA }}.apk app-release-aligned.apk &&\
+          ./android-sdk/build-tools/33.0.0/apksigner verify awim-${{ env.SHORT_SHA }}.apk"
+
+      - name: Create Pre-release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: "build-${{ env.SHORT_SHA }}"
+          release_name: "Build from commit ${{ env.SHORT_SHA }}"
+          prerelease: true
+          draft: false
+
+      - name: Upload Release Asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./awim-${{ env.SHORT_SHA }}.apk
+          asset_name: awim-${{ env.SHORT_SHA }}.apk
+          asset_content_type: application/vnd.android.package-archive
+
