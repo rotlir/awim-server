@@ -13,10 +13,14 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
 
-      - name: Get short commit SHA
+      - name: Get short commit SHA and commit count
         id: vars
-        run: echo "SHORT_SHA=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
+        run: | 
+          echo "SHORT_SHA=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
+          echo "COMMIT_NUMBER=$(git rev-list --count HEAD)" >> $GITHUB_ENV
 
       - name: Build with Arch Linux
         run: |
@@ -44,7 +48,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tag_name: "build-${{ env.SHORT_SHA }}"
+          tag_name: "build-${{ env.SHORT_SHA }}-${{ env.COMMIT_NUMBER }}"
           release_name: "Build from commit ${{ env.SHORT_SHA }}"
           prerelease: true
           draft: false
