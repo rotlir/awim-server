@@ -5,7 +5,6 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
-import android.content.SharedPreferences
 import android.net.ConnectivityManager
 import android.net.LinkProperties
 import android.net.Network
@@ -47,12 +46,23 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.core.text.isDigitsOnly
+import androidx.datastore.preferences.core.booleanPreferencesKey
+import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.preferencesDataStore
+import androidx.lifecycle.lifecycleScope
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.PermissionState
 import com.google.accompanist.permissions.isGranted
 import com.google.accompanist.permissions.rememberPermissionState
 import com.rotlir.awim.ui.theme.AppTheme
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 
+private val Context.dataStore by preferencesDataStore(name = "awim")
+private val portPreferenceKey = stringPreferencesKey("port")
+private val tcpModePreferenceKey = booleanPreferencesKey("tcpMode")
 
 class MainActivity : ComponentActivity() {
     private var permissionsChecked by mutableStateOf(false)
@@ -66,7 +76,6 @@ class MainActivity : ComponentActivity() {
     private var service: ConnectionService? by mutableStateOf(null)
     private var binder: ConnectionService.LocalBinder? by mutableStateOf(null)
     private var tcpMode by mutableStateOf(false)
-    private var sharedPreferences: SharedPreferences? = null
 
     private val serviceCallback = object : ServiceCallback {
         override fun onPortChanged(p: Int) {
@@ -93,8 +102,6 @@ class MainActivity : ComponentActivity() {
             service = binder!!.getService()
             if (serviceRunning)
                 tcpMode = binder!!.isTCPMode()
-            else
-                tcpMode = sharedPreferences?.getBoolean("tcpMode", false) ?: false
             binder!!.registerCallback(serviceCallback)
         }
 
@@ -113,13 +120,13 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        sharedPreferences = getSharedPreferences("awim", Context.MODE_PRIVATE)
-        val savedPort = sharedPreferences?.getString("port", "") ?: ""
+        val preferences = runBlocking { applicationContext.dataStore.data.first() }
+        val savedPort = preferences[portPreferenceKey] ?: ""
         if (savedPort.isDigitsOnly() && savedPort != "") {
             port = savedPort.toInt()
             autoAssignPort = false
         }
-        tcpMode = sharedPreferences?.getBoolean("tcpMode", false) ?: false
+        tcpMode = preferences[tcpModePreferenceKey] ?: false
         enableEdgeToEdge()
         val bindIntent = Intent(this, ConnectionService::class.java)
         bindService(bindIntent, serviceConnection, Context.BIND_AUTO_CREATE)
@@ -233,7 +240,7 @@ class MainActivity : ComponentActivity() {
 
     @Composable
     fun AppLayout(context: Context) {
-        var portStr by remember { mutableStateOf(sharedPreferences?.getString("port", "") ?: "") }
+        var portStr by remember { mutableStateOf(if (autoAssignPort) "" else port.toString()) }
         var statusText by remember { mutableStateOf("") }
         var btnText by remember { mutableStateOf("Start AWiM") }
         var enableTextField by remember { mutableStateOf(true) }
@@ -298,7 +305,11 @@ class MainActivity : ComponentActivity() {
                     enabled = enableSwitch,
                     onCheckedChange = {
                         tcpMode = !tcpMode
-                        sharedPreferences?.edit()?.putBoolean("tcpMode", tcpMode)?.apply()
+                        lifecycleScope.launch {
+                            applicationContext.dataStore.edit { preferences ->
+                                preferences[tcpModePreferenceKey] = tcpMode
+                            }
+                        }
                 })
                 Text("TCP mode")
             }
@@ -313,14 +324,22 @@ class MainActivity : ComponentActivity() {
                             portStr = it
                             port = portStr.toInt()
                             autoAssignPort = false
-                            sharedPreferences?.edit()?.putString("port", portStr)?.apply()
+                            lifecycleScope.launch {
+                                applicationContext.dataStore.edit { preferences ->
+                                    preferences[portPreferenceKey] = portStr
+                                }
+                            }
                         }
                     }
                     else {
                         portStr = ""
                         autoAssignPort = true
                         port = 0
-                        sharedPreferences?.edit()?.putString("port", "")?.apply()
+                        lifecycleScope.launch {
+                            applicationContext.dataStore.edit { preferences ->
+                                preferences[portPreferenceKey] = ""
+                            }
+                        }
                     }
                 },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
