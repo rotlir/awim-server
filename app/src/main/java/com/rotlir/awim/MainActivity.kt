@@ -5,6 +5,7 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
+import android.content.SharedPreferences
 import android.net.ConnectivityManager
 import android.net.LinkProperties
 import android.net.Network
@@ -65,6 +66,7 @@ class MainActivity : ComponentActivity() {
     private var service: ConnectionService? by mutableStateOf(null)
     private var binder: ConnectionService.LocalBinder? by mutableStateOf(null)
     private var tcpMode by mutableStateOf(false)
+    private var sharedPreferences: SharedPreferences? = null
 
     private val serviceCallback = object : ServiceCallback {
         override fun onPortChanged(p: Int) {
@@ -108,6 +110,12 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        sharedPreferences = getSharedPreferences("awim", Context.MODE_PRIVATE)
+        val savedPort = sharedPreferences?.getString("port", "") ?: ""
+        if (savedPort.isDigitsOnly() && savedPort != "") {
+            port = savedPort.toInt()
+            autoAssignPort = false
+        }
         enableEdgeToEdge()
         val bindIntent = Intent(this, ConnectionService::class.java)
         bindService(bindIntent, serviceConnection, Context.BIND_AUTO_CREATE)
@@ -221,7 +229,7 @@ class MainActivity : ComponentActivity() {
 
     @Composable
     fun AppLayout(context: Context) {
-        var portStr by remember { mutableStateOf("") }
+        var portStr by remember { mutableStateOf(sharedPreferences?.getString("port", "") ?: "") }
         var statusText by remember { mutableStateOf("") }
         var btnText by remember { mutableStateOf("Start AWiM") }
         var enableTextField by remember { mutableStateOf(true) }
@@ -300,12 +308,14 @@ class MainActivity : ComponentActivity() {
                             portStr = it
                             port = portStr.toInt()
                             autoAssignPort = false
+                            sharedPreferences?.edit()?.putString("port", portStr)?.apply()
                         }
                     }
                     else {
                         portStr = ""
                         autoAssignPort = true
                         port = 0
+                        sharedPreferences?.edit()?.putString("port", "")?.apply()
                     }
                 },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
