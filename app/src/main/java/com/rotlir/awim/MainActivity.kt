@@ -46,23 +46,14 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.core.text.isDigitsOnly
-import androidx.datastore.preferences.core.booleanPreferencesKey
-import androidx.datastore.preferences.core.edit
-import androidx.datastore.preferences.core.stringPreferencesKey
-import androidx.datastore.preferences.preferencesDataStore
 import androidx.lifecycle.lifecycleScope
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.PermissionState
 import com.google.accompanist.permissions.isGranted
 import com.google.accompanist.permissions.rememberPermissionState
 import com.rotlir.awim.ui.theme.AppTheme
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
-
-private val Context.dataStore by preferencesDataStore(name = "awim")
-private val portPreferenceKey = stringPreferencesKey("port")
-private val tcpModePreferenceKey = booleanPreferencesKey("tcpMode")
 
 class MainActivity : ComponentActivity() {
     private var permissionsChecked by mutableStateOf(false)
@@ -76,6 +67,7 @@ class MainActivity : ComponentActivity() {
     private var service: ConnectionService? by mutableStateOf(null)
     private var binder: ConnectionService.LocalBinder? by mutableStateOf(null)
     private var tcpMode by mutableStateOf(false)
+    private lateinit var appSettingsStore: AppSettingsStore
 
     private val serviceCallback = object : ServiceCallback {
         override fun onPortChanged(p: Int) {
@@ -120,13 +112,14 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val preferences = runBlocking { applicationContext.dataStore.data.first() }
-        val savedPort = preferences[portPreferenceKey] ?: ""
+        appSettingsStore = AppSettingsStore(applicationContext)
+        val settings = runBlocking { appSettingsStore.loadSettings() }
+        val savedPort = settings.port
         if (savedPort.isDigitsOnly() && savedPort != "") {
             port = savedPort.toInt()
             autoAssignPort = false
         }
-        tcpMode = preferences[tcpModePreferenceKey] ?: false
+        tcpMode = settings.tcpMode
         enableEdgeToEdge()
         val bindIntent = Intent(this, ConnectionService::class.java)
         bindService(bindIntent, serviceConnection, Context.BIND_AUTO_CREATE)
@@ -306,9 +299,7 @@ class MainActivity : ComponentActivity() {
                     onCheckedChange = {
                         tcpMode = !tcpMode
                         lifecycleScope.launch {
-                            applicationContext.dataStore.edit { preferences ->
-                                preferences[tcpModePreferenceKey] = tcpMode
-                            }
+                            appSettingsStore.saveTcpMode(tcpMode)
                         }
                 })
                 Text("TCP mode")
@@ -325,9 +316,7 @@ class MainActivity : ComponentActivity() {
                             port = portStr.toInt()
                             autoAssignPort = false
                             lifecycleScope.launch {
-                                applicationContext.dataStore.edit { preferences ->
-                                    preferences[portPreferenceKey] = portStr
-                                }
+                                appSettingsStore.savePort(portStr)
                             }
                         }
                     }
@@ -336,9 +325,7 @@ class MainActivity : ComponentActivity() {
                         autoAssignPort = true
                         port = 0
                         lifecycleScope.launch {
-                            applicationContext.dataStore.edit { preferences ->
-                                preferences[portPreferenceKey] = ""
-                            }
+                            appSettingsStore.savePort("")
                         }
                     }
                 },
