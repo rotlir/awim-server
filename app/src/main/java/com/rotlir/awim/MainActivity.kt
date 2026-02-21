@@ -91,7 +91,10 @@ class MainActivity : ComponentActivity() {
         override fun onServiceConnected(p0: ComponentName?, p1: IBinder?) {
             binder = p1 as ConnectionService.LocalBinder
             service = binder!!.getService()
-            tcpMode = binder!!.isTCPMode()
+            if (serviceRunning)
+                tcpMode = binder!!.isTCPMode()
+            else
+                tcpMode = sharedPreferences?.getBoolean("tcpMode", false) ?: false
             binder!!.registerCallback(serviceCallback)
         }
 
@@ -116,6 +119,7 @@ class MainActivity : ComponentActivity() {
             port = savedPort.toInt()
             autoAssignPort = false
         }
+        tcpMode = sharedPreferences?.getBoolean("tcpMode", false) ?: false
         enableEdgeToEdge()
         val bindIntent = Intent(this, ConnectionService::class.java)
         bindService(bindIntent, serviceConnection, Context.BIND_AUTO_CREATE)
@@ -294,6 +298,7 @@ class MainActivity : ComponentActivity() {
                     enabled = enableSwitch,
                     onCheckedChange = {
                         tcpMode = !tcpMode
+                        sharedPreferences?.edit()?.putBoolean("tcpMode", tcpMode)?.apply()
                 })
                 Text("TCP mode")
             }
