@@ -46,12 +46,14 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.core.text.isDigitsOnly
+import androidx.lifecycle.lifecycleScope
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.PermissionState
 import com.google.accompanist.permissions.isGranted
 import com.google.accompanist.permissions.rememberPermissionState
 import com.rotlir.awim.ui.theme.AppTheme
-
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 
 class MainActivity : ComponentActivity() {
     private var permissionsChecked by mutableStateOf(false)
@@ -65,6 +67,7 @@ class MainActivity : ComponentActivity() {
     private var service: ConnectionService? by mutableStateOf(null)
     private var binder: ConnectionService.LocalBinder? by mutableStateOf(null)
     private var tcpMode by mutableStateOf(false)
+    private lateinit var appSettingsStore: AppSettingsStore
 
     private val serviceCallback = object : ServiceCallback {
         override fun onPortChanged(p: Int) {
@@ -89,7 +92,8 @@ class MainActivity : ComponentActivity() {
         override fun onServiceConnected(p0: ComponentName?, p1: IBinder?) {
             binder = p1 as ConnectionService.LocalBinder
             service = binder!!.getService()
-            tcpMode = binder!!.isTCPMode()
+            if (serviceRunning)
+                tcpMode = binder!!.isTCPMode()
             binder!!.registerCallback(serviceCallback)
         }
 
@@ -108,6 +112,14 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        appSettingsStore = AppSettingsStore(applicationContext)
+        val settings = runBlocking { appSettingsStore.loadSettings() }
+        val savedPort = settings.port
+        if (savedPort.isDigitsOnly() && savedPort != "") {
+            port = savedPort.toInt()
+            autoAssignPort = false
+        }
+        tcpMode = settings.tcpMode
         enableEdgeToEdge()
         val bindIntent = Intent(this, ConnectionService::class.java)
         bindService(bindIntent, serviceConnection, Context.BIND_AUTO_CREATE)
@@ -221,7 +233,7 @@ class MainActivity : ComponentActivity() {
 
     @Composable
     fun AppLayout(context: Context) {
-        var portStr by remember { mutableStateOf("") }
+        var portStr by remember { mutableStateOf(if (autoAssignPort) "" else port.toString()) }
         var statusText by remember { mutableStateOf("") }
         var btnText by remember { mutableStateOf("Start AWiM") }
         var enableTextField by remember { mutableStateOf(true) }
@@ -286,6 +298,9 @@ class MainActivity : ComponentActivity() {
                     enabled = enableSwitch,
                     onCheckedChange = {
                         tcpMode = !tcpMode
+                        lifecycleScope.launch {
+                            appSettingsStore.saveTcpMode(tcpMode)
+                        }
                 })
                 Text("TCP mode")
             }
@@ -300,12 +315,18 @@ class MainActivity : ComponentActivity() {
                             portStr = it
                             port = portStr.toInt()
                             autoAssignPort = false
+                            lifecycleScope.launch {
+                                appSettingsStore.savePort(portStr)
+                            }
                         }
                     }
                     else {
                         portStr = ""
                         autoAssignPort = true
                         port = 0
+                        lifecycleScope.launch {
+                            appSettingsStore.savePort("")
+                        }
                     }
                 },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
